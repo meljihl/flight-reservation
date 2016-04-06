@@ -1,0 +1,250 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[a4paper]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[normalem]{ulem}
+\usepackage[french]{babel}
+\usepackage{verbatim}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{fullpage}
+\usepackage{hyperref}
+\usepackage[official]{eurosym}
+
+\title{Programmation Reseaux \\ Exercice 2}
+
+\author{Nicolas Herbaut \& Predari Maria \\ nicolas.herbaut@labri.fr, maria.predari@inria.fr}
+
+\date{2014-2015}
+
+\begin{document}
+\maketitle
+
+\section*{Présentation du système}
+
+Dans cet exercice vous devez mettre en œuvre un service simple de réservation aérienne.
+ Le service permettra aux clients de soumettre une requête pour un vol en 
+spécifiant plusieurs paramètres, tels que le départ, l'arrivée et la date souhaitée.
+Pendant le traitement de la requête le service doit rechercher dans une base de données
+ et retourner les résultats trouvés au client. En plus, le service permettra aux clients
+de réserver un billet sur le vol spécifique ou d'annuler sa réservation.
+ Le service traite trois opérations :
+\begin{enumerate}
+ \item \textbf{recherche} - recherche de vols entre les aéroports de départ et d'arrivée, qui
+partent à la date donnée (pour plus de simplicité, seul les vols aller simples sont concidérés). La
+réponse du service est une liste de dossiers contenant les informations suivantes pour chaque
+vol correspondant : numéro de vol, le nombre de places disponibles et le prix.
+\item \textbf{reservation} - réserver un billet pour le vol avec le numero donné
+à la date donnée. Si la réservation est bien faite, le service doit renvoyer une
+ID de réservation. (Une ID de réservation est une série unique de chiffres et lettres 
+générés lorsqu'un paiement est effectué pour une réservation).
+
+\item \textbf{annulation} annule la réservation avec l' ID donnée.
+En cas d'erreur, comme une réservation d'un vol non-existant ou une
+annulation de non-réservation existante, le service doit informer les clients avec des
+messages appropriés. L'annulation de la réservation entraine la restitution de la place au pool de places disponible.
+\end{enumerate}
+
+\section*{Les composants du système}
+Le système prend en charge plusieurs clients et se compose d' un serveur unique.
+
+\subsection*{client}
+Chaque client est une application console qui
+communique avec le serveur de recherche de vols sur Internet en respectant à votre convenance une architecture 
+applicative SOAP ou REST.
+Vous pouvez supposer que le serveur de recherche de vols est toujours disponible. La sémantique de l'application est librement inspirée des commandes \textbf{cryptic} d'un grand opérateur de réservation aérienne. \href{http://petitlien.fr/cryptic}{Amadeus cryptic quick reference}
+L'application console prend en charge les commandes suivantes :
+\subsubsection*{Affichage des disponibilités}
+AN affiche les vols partant une heure avant l'heure spécifiée dans votre entrée\\
+syntaxe: \texttt{AN<Date><Origin><Destination><Optional Hour....>}\\ \\
+\begin{centering}
+\begin{tabular}{|p{\linewidth}|}
+ \hline
+ \texttt{ >AN04FEBBODCDG1200 }\\
+ \texttt{AN04FEBBODCDG1200}\\
+ \texttt{** RSI FLIGHT AVAILABILITY SYSTEM - AN **               WED 4 FEB 2015}\\
+ \texttt{1\hspace{10 mm}    AF 623 J3 Y9 M9\hspace{10 mm}           BOD CDG\hspace{10 mm}     1215\hspace{5 mm}   1325\hspace{5 mm}    1:10}\\
+ \texttt{2\hspace{10 mm}    AL 950 P9 J9 Y9\hspace{10 mm}           BOD CDG\hspace{10 mm}     1310\hspace{5 mm}   1500\hspace{5 mm}    1:50}\\
+ \texttt{3\hspace{10 mm}    UG 310 J5 C9 W9\hspace{10 mm}           BOD CDG\hspace{10 mm}     1510\hspace{5 mm}   1700\hspace{5 mm}    1:50}\\
+ \texttt{4\hspace{10 mm}    AF 608 J1 Y9 M9\hspace{10 mm}           BOD CDG\hspace{10 mm}     1815\hspace{5 mm}   1935\hspace{5 mm}    1:20}\\
+ \end{tabular}
+\end{centering} \\
+\paragraph{analyse de la requète \texttt{AN04FEBBODCDG1200}}
+\begin{itemize}
+	\item AN: obligatoire. Débute toute commande d'\textit{availability neutral}.
+	\item 04FEB: obligatoire. Date du départ sous la forme \{numéro du jour sur deux caractères\}\{Nom du mois sur trois caractères\}
+	\item BODCDG: obligatoire code \textit{IATA} sur 3 lettres de l'aéroport de départ et d'arrivée.
+	\item 1200: optionel heure de départ sur 4 chiffres.
+\end{itemize}
+\paragraph{analyse de la réponse \texttt{1 AF 623 J3 Y9 M9 BOD CDG 1215 1325 1:10}}
+\begin{itemize}
+	\item 1: identifiant du vol propre à la réponse (numéro de ligne)
+	\item AF: identifiant de la compagnie aérienne
+	\item 623: identifiant du vold
+	\item J3: il reste 3 places pour le tarif J
+	\item Y9: il reste 9 places ou plus pour le tarif Y
+	\item M9: il reste 9 places ou plus pour le tarif M
+	\item BOD: code \textit{IATA} de l'aéroport de Bordeaux Mérignac
+	\item CDG: code \textit{IATA} de l'aéroport de Paris Charles de Gaulle
+	\item 1215: heure de départ
+	\item 1325: heure d'arrivée
+	\item 1:10: durée du vol
+\end{itemize}
+\subsubsection*{Vente rapide}
+Il Fait suite à un Affichage des disponibilités car il utilise le numéro de ligne en référence.
+Syntaxe: \texttt{SS<No of Seats><Class><Availability Line No>}\\
+\begin{centering}
+\begin{tabular}{|p{\linewidth}|}
+ \hline
+>\texttt{SS1Y1} \\	
+\texttt{1 AF 623 Y 04FEV 1 BODCDG 1215 1325}\\
+>\texttt{SS2J1} \\	
+\texttt{1 AF 623 Y 04FEV 1 BODCDG 1215 1325}\\
+\texttt{2 AF 623 J 04FEV 2 BODCDG 1215 1325}\\
+   \end{tabular}
+\end{centering} 
+\paragraph{analyse de la requète SS1Y1 et sa réponse} 
+\begin{itemize}
+	\item vente d'1 siège de classe Y pour le vol de la ligne 1.
+	\item la réponse reprend les éléments du AN et ajoute le nombre de passager (HK1)
+\end{itemize}
+\paragraph{analyse de la requète SS2J1 et sa réponse} 
+\begin{itemize}
+	\item ajout à la vente de 2 sièges de classe J pour le vol de la ligne 1
+	\item la réponse reprend les éléments du AN et ajoute le nombre de passager (HK2)
+	\item le numéro de ligne de la réponse correspond à l'ordre d'ajout des réservations
+\end{itemize}
+
+\subsubsection*{Information passager}
+Permet de nomer les passagers d'un vols.
+
+\begin{centering}
+\begin{tabular}{|p{\linewidth}|}
+ \hline
+>\texttt{NM1PREDARI/MARIA MS} \\	
+\texttt{1. PREDARI/MARIA MS}\\
+\texttt{2 AF 623 Y 04FEV 1 BODCDG 1215 1325}\\
+\texttt{3 AF 623 J 04FEV 2 BODCDG 1215 1325}\\
+>\texttt{NM1HERBAUT/NICOLAS MR} \\	
+\texttt{1. PREDARI/MARIA MS  2. HERBAUT/NICOLAS MR}\\
+\texttt{3 AF 623 Y 04FEV 1 BODCDG 1215 1325}\\
+\texttt{4 AF 623 J 04FEV 2 BODCDG 1215 1325}\\
+>\texttt{NM1DELOR/XAVIER MR} \\	
+\texttt{1. PREDARI/MARIA MS  2. HERBAUT/NICOLAS MR}\\
+\texttt{3. DELOR/XAVIER MR}\\
+\texttt{4 AF 623 Y 04FEV 1 BODCDG 1215 1325}\\
+\texttt{5 AF 623 J 04FEV 2 BODCDG 1215 1325}\\
+   \end{tabular}
+\end{centering} 
+
+
+\subsubsection*{Calcul de Prix}
+Permet de connaitre les prix d'un voyage, les ajoute au ticket.
+
+\begin{centering}
+\begin{tabular}{|p{\linewidth}|}
+ \hline
+>\texttt{FXP} \\	
+\texttt{FXP} \\	
+\texttt{\hspace{10 mm}   PASSENGER        FARE<EUR>  TAX/FEE   PER PSGR} \\	
+\texttt{01 PREDARI/MARIA\ \ \ \ 120.00\hspace{10 mm}    20.00\hspace{10 mm}     140.00} \\	
+\texttt{02 HERBAUT/NICOLAS     \ 160.00\hspace{10 mm}    25.00\hspace{10 mm}     185.00} \\	
+\texttt{03 DELOR/XAVIER   \ \ \ \ 160.00\hspace{10 mm}   25.00\hspace{10 mm}     185.00} \\	
+\texttt{\hspace{18 mm}TOTAL\hspace{10 mm}        440.00\hspace{10 mm}   70.00\hspace{10 mm}     510.00} \\	
+\texttt{04 TST 7AHBQGM0}\\
+   \end{tabular}
+\end{centering} 
+
+\paragraph{analyse de la réponse à FXP}
+la réponse va donner les prix en fonction des vols des voyages. l'appel à \textit{FXP} va créer un TST (stored ticket côté server) qui va conserver pendant 3 minutes les informations de calcul de prix côté server. Au delà de cette limite, les prix ne seront plus valables, le TST devient innutilisable.
+
+\subsubsection*{Visualisation d'un ticket temporaire TST}, le TST 
+
+
+\begin{centering}
+\begin{tabular}{|p{\linewidth}|}
+ \hline
+>\texttt{TQT/7AHBQGM0} \\	
+\texttt{1. PREDARI/MARIA MS  2. HERBAUT/NICOLAS MR}\\
+\texttt{3. DELOR/XAVIER MR}\\
+\texttt{4 AF 623 Y 04FEV 1 BODCDG 1215 1325}\\
+\texttt{5 AF 623 J 04FEV 2 BODCDG 1215 1325}\\
+\texttt{6 TST 7AHBQGM0}\\
+
+   \end{tabular}
+\end{centering} 
+
+\subsubsection*{Emission de Ticket}
+Permet de créer et d'imprimer un ticket.
+
+\begin{centering}
+\begin{tabular}{|p{\linewidth}|}
+ \hline
+>\texttt{TTP} \\	
+\texttt{TTP} \\	
+\texttt{1. PREDARI/MARIA MS  2. HERBAUT/NICOLAS MR}\\
+\texttt{3. DELOR/XAVIER MR}\\
+\texttt{4 AF 623 Y 04FEV 1 BODCDG 1215 1325}\\
+\texttt{5 AF 623 J 04FEV 2 BODCDG 1215 1325}\\
+\texttt{6 TKT 7AHBQGM0}\\
+
+   \end{tabular}
+\end{centering} 
+
+\paragraph{analyse de la réponse à TTP}
+
+il va transformer le TST en TKT et valider l'achat. Le billet est stocké jusqu'à annulation sur le serveur.
+
+\subsubsection*{Visualisation d'un ticket sur le server}
+
+
+\begin{centering}
+\begin{tabular}{|p{\linewidth}|}
+ \hline
+>\texttt{TQT/7AHBQGM0} \\	
+\texttt{1. PREDARI/MARIA MS  2. HERBAUT/NICOLAS MR}\\
+\texttt{3. DELOR/XAVIER MR}\\
+\texttt{4 AF 623 Y 04FEV 1 BODCDG 1215 1325}\\
+\texttt{5 AF 623 J 04FEV 2 BODCDG 1215 1325}\\
+\texttt{6 TKT 7AHBQGM0}\\
+
+   \end{tabular}
+\end{centering} 
+
+
+\subsubsection*{Annulation}
+Permet d'annuler un ticket émis.
+
+\begin{centering}
+\begin{tabular}{|p{\linewidth}|}
+ \hline
+>\texttt{TTE/7AHBQGM0} \\	
+\texttt{TTE/7AHBQGM0} \\	
+\texttt{Ticket Cancelled}\\
+
+   \end{tabular}
+\end{centering} 
+
+
+\subsection*{Serveur}
+
+Deux tâches très différentes vous sont demandées:
+\begin{itemize}
+	\item l'analyse du problème et l'élaboration d'une architecture SOAP ou REST y répondant. Ce travail devra prendre la forme de schemas montrant les points d'appels aux fonctions server ainsi qu'une description du modèle de donnée.
+	\item l'implémentation du problème en utilisant les libraries vues en cours.
+\end{itemize}
+Vous n'avez pas nécessairement besoin d'implémenter un accès aux données, celui-ci vous est fourni dans le code de départ.
+
+\section*{Détails et hypothèses}
+Les échanges de données devront se faire conformément à l'architecture choisie.
+on fournit aux étudiants un code permettant d'accéder aux données de vol:\\
+\texttt{findFlights(departure,arrival,date,time)}\\
+et au pricing \\
+\texttt{priceSegment(flightNum,date,class,passengerCount)}
+
+
+\section*{Soumission}
+1 semaine après le dernier TD.
+
+\end{document}
